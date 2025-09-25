@@ -6,8 +6,6 @@ const Department = db.Department;
 const Category = db.Category;
 
 module.exports = {
-  // Get all asset stores
-  // microservices/auth/controllers/assetStore.js
   async getAllAssetStores(req, res) {
     try {
       const page = parseInt(req.query.page) || 1;
@@ -16,7 +14,7 @@ module.exports = {
       const search = req.query.search || "";
       const departmentId = req.query.departmentId || "";
       const categoryId = req.query.categoryId || "";
-      const plant = req.query.plant || ""; // Add plant filter
+      const plant = req.query.plant || "";
 
       let whereClause = {};
       let includeClause = [
@@ -34,37 +32,54 @@ module.exports = {
         },
       ];
 
+      // Build conditions array
+      let conditions = [];
+
       // Plant filtering - filter by department or category plant
       if (plant) {
-        whereClause[db.Sequelize.Op.or] = [
-          ...(whereClause[db.Sequelize.Op.or] || []),
-          {
-            "$department.plant$": plant,
-          },
-          {
-            "$category.plant$": plant,
-          },
-        ];
+        conditions.push({
+          [db.Sequelize.Op.or]: [
+            { "$department.plant$": plant },
+            { "$category.plant$": plant },
+            // Also include assets with no department/category (for transferred assets)
+            {
+              [db.Sequelize.Op.and]: [
+                { departmentId: null },
+                { categoryId: null },
+              ],
+            },
+          ],
+        });
       }
 
-      // Search functionality
+      // Search functionality - search across multiple columns
       if (search) {
-        whereClause[db.Sequelize.Op.or] = [
-          ...(whereClause[db.Sequelize.Op.or] || []),
-          { assetNo: { [db.Sequelize.Op.iLike]: `%${search}%` } },
-          { assetTag: { [db.Sequelize.Op.iLike]: `%${search}%` } },
-          { assetDescrition: { [db.Sequelize.Op.iLike]: `%${search}%` } },
-        ];
+        conditions.push({
+          [db.Sequelize.Op.or]: [
+            { assetNo: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+            { assetTag: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+            { assetDescrition: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+            // Also search in department name
+            { "$department.name$": { [db.Sequelize.Op.iLike]: `%${search}%` } },
+            // Also search in category name
+            { "$category.name$": { [db.Sequelize.Op.iLike]: `%${search}%` } },
+          ],
+        });
       }
 
-      // Filter by department
+      // Filter by specific department
       if (departmentId) {
-        whereClause.departmentId = departmentId;
+        conditions.push({ departmentId: departmentId });
       }
 
-      // Filter by category
+      // Filter by specific category
       if (categoryId) {
-        whereClause.categoryId = categoryId;
+        conditions.push({ categoryId: categoryId });
+      }
+
+      // Combine all conditions with AND
+      if (conditions.length > 0) {
+        whereClause[db.Sequelize.Op.and] = conditions;
       }
 
       const { count, rows } = await AssetStore.findAndCountAll({
@@ -73,6 +88,7 @@ module.exports = {
         limit,
         offset,
         order: [["createdAt", "DESC"]],
+        distinct: true, // Important when using includes with associations
       });
 
       res.status(200).json({
