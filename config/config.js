@@ -14,6 +14,6 @@ module.exports = {
     database: DEV_DB_NAME,
     host: DEV_DB_HOST,
     port: DEV_DB_PORT,
-    dialect: "mysql",
+    dialect: "postgres",
   },
 };

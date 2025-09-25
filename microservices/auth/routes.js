@@ -18,7 +18,7 @@ module.exports = (app) => {
   app.post(
     `${pre_path}/auth/signup`,
     [
-      verifySignUp.checkDuplicateMobile,
+      verifySignUp.checkDuplicateUser,
       referral.ifReferralExist,
       validations.validate("signup"),
     ],

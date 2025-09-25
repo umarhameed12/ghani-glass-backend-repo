@@ -1,37 +1,58 @@
 const db = require("../models");
 const User = db.User;
 
-checkDuplicateMobile = (req, res, next) => {
-  User.findOne({
-    where: {
-      username: req.body.username,
-    },
-  })
-    .then((user) => {
-      console.log(user);
-      if (user) {
-        res.status(400).send({
+const checkDuplicateUser = async (req, res, next) => {
+  try {
+    // Check email
+    if (req.body.email) {
+      const emailUser = await User.findOne({
+        where: { email: req.body.email },
+      });
+      if (emailUser) {
+        return res.status(400).send({
           status: false,
           type: "error",
           message: "Failed! Email is already in use!",
-          // message: req.body
         });
-        return;
       }
+    }
 
-      next();
-    })
-    .catch((err) => {
-      res.status(500).send({
-        status: false,
-        type: "error",
-        message: err.message,
+    // Check username
+    if (req.body.username) {
+      const usernameUser = await User.findOne({
+        where: { username: req.body.username },
       });
+      if (usernameUser) {
+        return res.status(400).send({
+          status: false,
+          type: "error",
+          message: "Failed! Username is already in use!",
+        });
+      }
+    }
+
+    // Check mobile
+    // if (req.body.mobile) {
+    //   const mobileUser = await User.findOne({
+    //     where: { mobile: req.body.mobile },
+    //   });
+    //   if (mobileUser) {
+    //     return res.status(400).send({
+    //       status: false,
+    //       type: "error",
+    //       message: "Failed! Mobile number is already in use!",
+    //     });
+    //   }
+    // }
+
+    next();
+  } catch (err) {
+    res.status(500).send({
+      status: false,
+      type: "error",
+      message: err.message,
     });
+  }
 };
 
-const verifySignUp = {
-  checkDuplicateMobile: checkDuplicateMobile,
-};
-
-module.exports = verifySignUp;
+module.exports = { checkDuplicateUser };
