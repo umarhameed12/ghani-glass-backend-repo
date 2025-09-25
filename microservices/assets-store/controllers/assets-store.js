@@ -7,6 +7,7 @@ const Category = db.Category;
 
 module.exports = {
   // Get all asset stores
+  // microservices/auth/controllers/assetStore.js
   async getAllAssetStores(req, res) {
     try {
       const page = parseInt(req.query.page) || 1;
@@ -15,12 +16,41 @@ module.exports = {
       const search = req.query.search || "";
       const departmentId = req.query.departmentId || "";
       const categoryId = req.query.categoryId || "";
+      const plant = req.query.plant || ""; // Add plant filter
 
       let whereClause = {};
+      let includeClause = [
+        {
+          model: Department,
+          as: "department",
+          attributes: ["id", "name", "plant"],
+          required: false,
+        },
+        {
+          model: Category,
+          as: "category",
+          attributes: ["id", "name", "plant"],
+          required: false,
+        },
+      ];
+
+      // Plant filtering - filter by department or category plant
+      if (plant) {
+        whereClause[db.Sequelize.Op.or] = [
+          ...(whereClause[db.Sequelize.Op.or] || []),
+          {
+            "$department.plant$": plant,
+          },
+          {
+            "$category.plant$": plant,
+          },
+        ];
+      }
 
       // Search functionality
       if (search) {
         whereClause[db.Sequelize.Op.or] = [
+          ...(whereClause[db.Sequelize.Op.or] || []),
           { assetNo: { [db.Sequelize.Op.iLike]: `%${search}%` } },
           { assetTag: { [db.Sequelize.Op.iLike]: `%${search}%` } },
           { assetDescrition: { [db.Sequelize.Op.iLike]: `%${search}%` } },
@@ -39,20 +69,7 @@ module.exports = {
 
       const { count, rows } = await AssetStore.findAndCountAll({
         where: whereClause,
-        include: [
-          {
-            model: Department,
-            as: "department",
-            attributes: ["id", "name", "plant"],
-            required: false,
-          },
-          {
-            model: Category,
-            as: "category",
-            attributes: ["id", "name", "plant"],
-            required: false,
-          },
-        ],
+        include: includeClause,
         limit,
         offset,
         order: [["createdAt", "DESC"]],
@@ -576,6 +593,137 @@ module.exports = {
       res.status(500).json({
         status: false,
         message: "Internal server error during bulk upload",
+        error: error.message,
+      });
+    }
+  },
+
+  async transferAssetStore(req, res) {
+    const transaction = await db.sequelize.transaction();
+
+    try {
+      const { id } = req.params;
+      const { transferFromPlant, transferToPlant } = req.body;
+
+      // Validation
+      if (!transferFromPlant || !transferToPlant) {
+        return res.status(400).json({
+          status: false,
+          message: "Both transferFromPlant and transferToPlant are required",
+        });
+      }
+
+      if (transferFromPlant === transferToPlant) {
+        return res.status(400).json({
+          status: false,
+          message: "Cannot transfer asset to the same plant",
+        });
+      }
+
+      // Find the asset
+      const assetStore = await AssetStore.findByPk(id, {
+        include: [
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "name", "plant"],
+            required: false,
+          },
+          {
+            model: Category,
+            as: "category",
+            attributes: ["id", "name", "plant"],
+            required: false,
+          },
+        ],
+        transaction,
+      });
+
+      if (!assetStore) {
+        await transaction.rollback();
+        return res.status(404).json({
+          status: false,
+          message: "Asset store not found",
+        });
+      }
+
+      // Create transfer log entry
+      const StoreTransfersLog = db.Store_Transfers_Log;
+      await StoreTransfersLog.create(
+        {
+          assetId: assetStore.id,
+          transferFromPlant,
+          tranferToPlant: transferToPlant, // Note: keeping the typo as it's in your model
+        },
+        { transaction }
+      );
+
+      // Update asset's department and category to null since it's moving to a different plant
+      // The new plant's admin will need to assign appropriate department/category
+
+      let newDepartmentId = null;
+      let newCategoryId = null;
+
+      if (assetStore.department) {
+        const matchingDept = await Department.findOne({
+          where: {
+            name: assetStore.department.name,
+            plant: transferToPlant,
+          },
+          transaction,
+        });
+        newDepartmentId = matchingDept?.id || null;
+      }
+
+      if (assetStore.category) {
+        const matchingCat = await Category.findOne({
+          where: {
+            name: assetStore.category.name,
+            plant: transferToPlant,
+          },
+          transaction,
+        });
+        newCategoryId = matchingCat?.id || null;
+      }
+      await assetStore.update(
+        {
+          departmentId: newDepartmentId,
+          categoryId: newCategoryId,
+        },
+        { transaction }
+      );
+
+      await transaction.commit();
+
+      // Fetch the updated asset
+      const updatedAsset = await AssetStore.findByPk(id, {
+        include: [
+          {
+            model: Department,
+            as: "department",
+            attributes: ["id", "name", "plant"],
+            required: false,
+          },
+          {
+            model: Category,
+            as: "category",
+            attributes: ["id", "name", "plant"],
+            required: false,
+          },
+        ],
+      });
+
+      res.status(200).json({
+        status: true,
+        message: `Asset successfully transferred from ${transferFromPlant} to ${transferToPlant}`,
+        data: updatedAsset,
+      });
+    } catch (error) {
+      await transaction.rollback();
+      console.error("Transfer asset store error:", error);
+      res.status(500).json({
+        status: false,
+        message: "Internal server error during asset transfer",
         error: error.message,
       });
     }

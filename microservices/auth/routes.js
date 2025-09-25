@@ -11,9 +11,9 @@ const pre_path = `/api/v1/users`;
 /******** Social Login functionality */
 
 module.exports = (app) => {
-  app.get(`${pre_path}`, (req, res) => {
-    return res.status(200).json({ msg: "Hello form users" });
-  });
+  // app.get(`${pre_path}`, (req, res) => {
+  //   return res.status(200).json({ msg: "Hello form users" });
+  // });
 
   app.post(
     `${pre_path}/auth/signup`,
@@ -34,4 +34,6 @@ module.exports = (app) => {
     [validations.validate("verify")],
     auth.verify
   );
+
+  app.get(`${pre_path}`, auth.getAllUsers);
 };

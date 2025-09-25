@@ -14,6 +14,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: "categoryId",
         as: "category",
       });
+
+      AssetStore.hasMany(models.Store_Transfers_Log, {
+        foreignKey: "assetId",
+        as: "store_transfer_log",
+      });
     }
   }
   AssetStore.init(

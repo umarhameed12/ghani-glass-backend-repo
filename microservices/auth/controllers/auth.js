@@ -224,6 +224,67 @@ module.exports = {
       res.status(500).send("Internal Server Error");
     }
   },
+  async getAllUsers(req, res) {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const search = req.query.search || "";
+      const offset = (page - 1) * limit;
+
+      // Build search condition
+      const whereCondition = search
+        ? {
+            [db.Sequelize.Op.or]: [
+              { name: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+              { username: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+              { email: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+              { mobile: { [db.Sequelize.Op.iLike]: `%${search}%` } },
+            ],
+          }
+        : {};
+
+      // Get users with pagination
+      const { count, rows: users } = await User.findAndCountAll({
+        where: whereCondition,
+        attributes: [
+          "id",
+          "name",
+          "username",
+          "email",
+          "mobile",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: limit,
+        offset: offset,
+      });
+
+      const totalPages = Math.ceil(count / limit);
+
+      res.status(200).send({
+        status: true,
+        data: {
+          users: users,
+          pagination: {
+            currentPage: page,
+            totalPages: totalPages,
+            totalUsers: count,
+            limit: limit,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+          },
+        },
+      });
+    } catch (err) {
+      res.status(500).send({
+        status: false,
+        type: "error",
+        message: err.message,
+      });
+    }
+  },
 };
 
 function getRndInteger() {

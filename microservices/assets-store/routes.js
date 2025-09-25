@@ -53,4 +53,5 @@ module.exports = (app) => {
   // Delete asset store
   app.delete(`${pre_path}/:id`, assetStore.deleteAssetStore);
   app.post(`${pre_path}/bulk-upload`, assetStore.bulkUploadAssetStores);
+  app.post(`${pre_path}/:id/transfer`, assetStore.transferAssetStore);
 };
